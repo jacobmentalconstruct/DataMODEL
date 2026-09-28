@@ -54,5 +54,4 @@ on a real sample project passes on the oldest and newest supported Python.
 
 ## Current Decision
 
-**Definition status:** PROPOSED (restated from the README and working sessions; awaiting
-the user's confirmation)
+**Definition status:** DEFINED (confirmed by the user, 2026-09-28)

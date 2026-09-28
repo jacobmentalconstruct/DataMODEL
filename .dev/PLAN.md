@@ -178,6 +178,6 @@ Outcome met: `.dev/` holds PROJECT/PLAN/bench and `pack` excludes it (tested; `p
 also reports every exclusion); the analysis, decisions, stop conditions and tranches are
 recorded here; baseline in §6; READMEs and `AGENTS.md` document `.dev/` (including
 "delete `.dev/` after cloning to start a project"). Evidence: full suite passes (Python
-3.13); `bench.py` runs; journal entries 2–4. Limitations: `.dev/PROJECT.md` is PROPOSED
-until the user confirms it; the S1 size target is ~30% (not the ~40% first stated)
+3.13); `bench.py` runs; journal entries 2–4. Limitations: `.dev/PROJECT.md` was PROPOSED
+at parking (confirmed DEFINED 2026-09-28); the S1 size target is ~30% (not the ~40% first stated)
 because the corrected baseline is 8,122 lines, not ~6,100.
