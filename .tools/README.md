@@ -17,8 +17,9 @@ and `ollama`, `apply` + edit/write/approve.
 `pack.bat` (double-click) / `sh .tools/pack.sh` / `helpers pack [out.zip]` writes
 `<Project>.zip` beside the project (leading dots dropped from the name) and two
 launchers, `<Project>-unpack.bat` / `.sh`. It leaves out this copy's `instance.json`,
-`state/`, `logs/`, `.git` and caches, so every unpacked project starts with its own
-identity and an empty history. Don't zip by hand: a copied `state/` would carry this
+`state/`, `logs/`, `.git`, caches, `.claude/settings.local.json` and a top-level `.dev/`
+(the skeleton's own plan), so every unpacked project starts with its own identity and an
+empty history. Don't zip by hand: a copied `state/` would carry this
 project's receipts, journal and snapshots into the next one.
 
 The archive unpacks itself: `python <Project>.zip [folder]` (with no folder, a folder

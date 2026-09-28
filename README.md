@@ -19,12 +19,14 @@ agent (Claude Code or anything that reads `AGENTS.md`) at it. You get two things
 | `PLAN.md` | How you'll get there, and whether building is allowed yet. |
 | `.framework/` | The reusable rules: design principles, architecture, workflow. Same in every project. |
 | `.tools/` | The local tools, plus an MCP server that `.mcp.json` registers. See `.tools/README.md`. |
+| `.dev/` | Only in this repository: the skeleton's own definition, plan and benchmark. `pack` leaves it out. |
 
 ## Start a project
 
 You need Python 3.10 or newer.
 
-1. Get a copy: unpack an archive made with `pack` (below), or clone this repository.
+1. Get a copy: unpack an archive made with `pack` (below), or clone this repository and
+   delete its `.dev/` folder, which holds the skeleton's own plan, not yours.
 2. Open the folder with your agent. Claude Code asks once to approve the `helpers` tool
    server; say yes. The tools set themselves up on first use.
 3. Tell the agent what you want to do. It starts from `AGENTS.md`.
@@ -45,7 +47,8 @@ To reuse this skeleton (or snapshot any project built on it) as a single archive
   never overwritten.
 
 Pack rather than zipping by hand: packing leaves out the copy's private state (its
-identity, tool history, journal and snapshots), so every project starts clean.
+identity, tool history, journal and snapshots), your local agent settings
+(`.claude/settings.local.json`) and `.dev/`, so every project starts clean.
 
 ## Large folders
 

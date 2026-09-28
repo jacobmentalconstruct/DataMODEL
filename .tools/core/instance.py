@@ -107,6 +107,8 @@ PRIVATE = (MANIFEST_NAME, "state", "logs")
 _NEVER_PACKED = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
 # Per-user agent settings (target-relative): local to one person's machine, never shared.
 _LOCAL_SETTINGS = {Path(".claude/settings.local.json")}
+# Top-level folder holding the skeleton's own PROJECT/PLAN; packed copies get the templates.
+_DEV_FOLDER = ".dev"
 _UNPACK_BAT = """@echo off
 rem Unpack {name}.zip into a folder you choose (needs Python 3).
 where python >nul 2>nul && (python "%~dp0{name}.zip" %*) || (py -3 "%~dp0{name}.zip" %*)
@@ -127,7 +129,8 @@ def default_archive(instance_root: str | Path) -> Path:
 
 
 def package(instance_root: str | Path, destination: str | Path) -> dict:
-    """Zip the project except this instance's private paths, caches and .git; the archive
+    """Zip the project except this instance's private paths, caches, .git, local agent
+    settings and the top-level .dev/ (the skeleton's own plan); the archive
     unpacks itself (`python <name>.zip`) and gets double-clickable launchers beside it."""
     instance_path = Path(instance_root).resolve()
     target_path = instance_path.parent
@@ -144,7 +147,8 @@ def package(instance_root: str | Path, destination: str | Path) -> dict:
         for path in sorted(target_path.rglob("*")):
             if path == destination or any(part in _NEVER_PACKED for part in path.parts):
                 continue
-            if path.relative_to(target_path) in _LOCAL_SETTINGS:
+            relative = path.relative_to(target_path)
+            if relative in _LOCAL_SETTINGS or relative.parts[0] == _DEV_FOLDER:
                 continue
             resolved = path.resolve()
             if any(resolved == p or p in resolved.parents for p in private):
@@ -162,7 +166,8 @@ def package(instance_root: str | Path, destination: str | Path) -> dict:
     launchers[1].chmod(0o755)
     return {"ok": True, "archive": str(destination), "files": files, "bytes": size,
             "launchers": [str(path) for path in launchers],
-            "excluded": [f"{instance_path.name}/{name}" for name in PRIVATE] + [".git", "caches"]}
+            "excluded": [f"{instance_path.name}/{name}" for name in PRIVATE]
+                        + [".git", "caches", ".claude/settings.local.json", _DEV_FOLDER]}
 
 
 def create(instance_root: str | Path, target_root: str | Path) -> InstanceContext:
