@@ -1,0 +1,103 @@
+{
+  "contract_version": 1,
+  "id": "edit",
+  "description": "Exact-text replace in a file; old must be unique unless all. edits[] is atomic.",
+  "authority": "apply",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1
+      },
+      "old": {
+        "type": "string",
+        "minLength": 1
+      },
+      "new": {
+        "type": "string"
+      },
+      "all": {
+        "type": "boolean",
+        "description": "replace every match"
+      },
+      "edits": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "old": {
+              "type": "string",
+              "minLength": 1
+            },
+            "new": {
+              "type": "string"
+            },
+            "all": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "old",
+            "new"
+          ],
+          "additionalProperties": false
+        },
+        "description": "[{old,new,all}] in order"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "text": {
+        "type": "string"
+      },
+      "handle": {
+        "type": "string"
+      },
+      "replacements": {
+        "type": "integer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "error_kind": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "ok"
+    ],
+    "additionalProperties": false
+  },
+  "reads": [
+    "target"
+  ],
+  "writes": [
+    "target"
+  ],
+  "applicability": {
+    "domains": [
+      "generic"
+    ],
+    "requires": [
+      "writable_target",
+      "text_file"
+    ]
+  },
+  "path_arguments": {
+    "path": "target"
+  },
+  "invocation": {
+    "kind": "python",
+    "entry": "tools/edit/tool.py"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "helpers": {
+      "type": "stdio",
+      "command": "python",
+      "args": [".tools/bin/helpers.py", "mcp", "--authority", "apply"]
+    }
+  }
+}

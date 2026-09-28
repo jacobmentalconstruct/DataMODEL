@@ -1,0 +1,46 @@
+{
+  "contract_version": 1,
+  "id": "ollama",
+  "description": "Local Ollama: run prompts (sweep prompts x models), chat, embed + similarity, list/ps/load/unload models. Full runs are receipted.",
+  "authority": "sandbox",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "action": {"type": "string", "enum": ["run", "models", "ps", "load", "unload", "embed"], "description": "default run"},
+      "model": {"type": ["string", "array"], "items": {"type": "string"}, "description": "one model or a list to compare"},
+      "prompt": {"type": "string"},
+      "prompts": {"type": "array", "items": {"type": "string"}, "description": "sweep several prompts"},
+      "prompt_file": {"type": "string", "minLength": 1, "description": "project file used as the prompt"},
+      "system": {"type": "string"},
+      "system_file": {"type": "string", "minLength": 1},
+      "messages": {"type": "array", "items": {"type": "object"}, "description": "chat [{role, content}]"},
+      "options": {"type": "object", "description": "temperature, seed, num_ctx, num_predict, top_p, stop, ..."},
+      "format": {"type": ["string", "object"], "description": "\"json\" or a JSON schema"},
+      "think": {"type": "boolean"},
+      "show_thinking": {"type": "boolean"},
+      "keep_alive": {"type": ["string", "integer"]},
+      "timeout": {"type": "integer", "minimum": 1, "maximum": 290, "description": "seconds per request (280)"}
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ok": {"type": "boolean"},
+      "text": {"type": "string"},
+      "host": {"type": "string"},
+      "runs": {"type": "array"},
+      "models": {"type": "array"},
+      "embeddings": {"type": "object"},
+      "error": {"type": "string"},
+      "error_kind": {"type": "string"}
+    },
+    "required": ["ok"],
+    "additionalProperties": false
+  },
+  "reads": ["target"],
+  "writes": [],
+  "applicability": {"domains": ["generic"], "requires": ["ollama"]},
+  "path_arguments": {"prompt_file": "target", "system_file": "target"},
+  "invocation": {"kind": "python", "entry": "tools/ollama/tool.py"}
+}

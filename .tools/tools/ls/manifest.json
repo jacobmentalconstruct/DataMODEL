@@ -1,0 +1,101 @@
+{
+  "contract_version": 1,
+  "id": "ls",
+  "description": "List/find paths (respects .gitignore); cut-off dirs show (+N files).",
+  "authority": "observe",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "description": "dir scope"
+      },
+      "glob": {
+        "type": "string",
+        "minLength": 1,
+        "description": "e.g. **/*.py; implies files, any depth"
+      },
+      "depth": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "default 2"
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "any",
+          "file",
+          "dir"
+        ]
+      },
+      "sort": {
+        "type": "string",
+        "enum": [
+          "name",
+          "mtime"
+        ],
+        "description": "mtime = newest first"
+      },
+      "sizes": {
+        "type": "boolean"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100000,
+        "description": "default 500"
+      },
+      "all": {
+        "type": "boolean",
+        "description": "include ignored/vendor"
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "text": {
+        "type": "string"
+      },
+      "returned": {
+        "type": "integer"
+      },
+      "truncated": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "error_kind": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "ok"
+    ],
+    "additionalProperties": false
+  },
+  "reads": [
+    "target"
+  ],
+  "writes": [],
+  "applicability": {
+    "domains": [
+      "generic"
+    ],
+    "empty_target": true
+  },
+  "path_arguments": {
+    "path": "target"
+  },
+  "invocation": {
+    "kind": "python",
+    "entry": "tools/ls/tool.py"
+  }
+}
