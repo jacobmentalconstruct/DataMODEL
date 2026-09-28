@@ -119,59 +119,91 @@ Finding for T1: `changes` with no baseline only reports a file count, yet it has
 file. Part of the 82.9 s is probably a cold cache or antivirus scanning 20,000
 freshly written files (the `mark` right after it took 14.8 s); the split is not measured.
 
+**T1 A/B (2026-09-28, same session, back to back: T0 code, T1 code, T0 code again):**
+
+| measure | T0 | T1 | T0 again |
+|---|---|---|---|
+| `changes`, no baseline | 156.8 s | 4.2 s | 150.1 s |
+| `mark`, first | 26.2 s | 188.3 s | 23.5 s |
+| `changes`, idle | 3.9 s | 3.4 s | 3.4 s |
+| `changes`, 1% edited | 5.3 s | 4.8 s | 4.9 s |
+| `mark`, second | 17.4 s | 15.4 s | 15.2 s |
+| state after two marks | 2.54 KB/file | 2.54 KB/file | 2.53 KB/file |
+
+Reading: on this machine the first read of 20,000 freshly written files costs ~150 s
+(most likely antivirus), paid by whichever command reads first. T0 paid it in `changes`
+and read everything again in `mark`; T1 pays it once, in `mark`, and `changes` answers in
+4 s. Repeated-use timings are equal or better. The machine ran slower than on 2026-09-27
+(T0 code: idle `changes` 2.2 s then, 3.4–3.9 s now), so **compare tranches only by A/B
+runs in one session**, and judge S3 on the idle, 1%-edited and second-`mark` rows.
+
 ## 7. Current tranche
 
-**ID:** T1 — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
+**ID:** T2 — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
 
-**Expected outcome:** the known small bugs and frailties are fixed, each with a regression
-test; the stale code that survives T3/T4 is removed; a test keeps the docs' op names
-honest.
+**Expected outcome:** state storage stops growing with ordinary read-only use, per
+decision 4, without losing any record the project cites as evidence.
 
 **Scope:**
-1. `changes`/`mark`: a file that disappears between listing and `lstat` is treated as
-   absent, not a crash (`substrate._describe_resource`; the walk survives into T4).
-2. `changes` with no baseline counts files without hashing them.
-3. `refs`: a decorated definition is reported at its `def`/`class` line.
-4. `read`: a file that is not valid UTF-8 gets a one-line notice that bytes were
-   replaced.
-5. CLI: `run op=help` and `run op=<name>` work (the form the MCP instructions teach), as
-   do `help` and `help op=<name>`.
-6. `.mcp.json` portability: unpacking on a machine without `python` on PATH writes the
-   interpreter name that ran the unpack (e.g. `python3`) into `.mcp.json`.
-7. `VERIFIED_PYTHON` = the versions the suite actually passes on, measured in this
-   tranche (3.10–3.14 are installed).
-8. Remove the dead `USEFUL_HELPERS_IDENTITY_` filter; define the authority order once.
-9. Docs-vs-ops test: every op named in `AGENTS.md`, `.framework/*.md`, both READMEs and
-   the MCP instructions exists in the op table or the tool registry.
+1. Retention in `core/runtime_records.py`: receipt rows are kept forever. Full artifacts
+   are kept for calls to tools whose manifest authority is `sandbox` or `apply` (writes,
+   `ollama`), and for any artifact a journal entry links to. For calls to `observe` tools
+   (and refusals that never reached a tool), only the newest 200 artifacts are kept.
+2. Pruning clears the receipt's `artifact_id` before deleting (foreign keys are
+   enforced), runs cheaply as receipts complete, not on every call, and hands pages back
+   (incremental vacuum).
+3. Reading a pruned artifact through its receipt says it was pruned under retention,
+   not "not found".
+4. Remove the dead `create_artifact` (no callers).
+5. Document the retention rule in `.tools/README.md` and `WORKFLOW.md` ("cite receipt
+   ids": link the journal entry to them to keep their full artifacts).
 
-**Explicit non-goals:** removing substrate, awareness or mutation (T3/T4); schema
-changes, migration squash and old-format compatibility code (T4; the `T7` string dies with
-the claims code there); receipt retention (T2); output formatting (T5).
+**Explicit non-goals:** pruning receipt rows or journal entries; changing what an
+artifact contains (T5); schema changes (T4). If a column turns out to be needed, T2
+stops and reports rather than adding it.
 
-**Affected ownership domains:** `core/substrate.py` (walk only), `core/cli.py`,
-`core/mcp.py` (instructions text only if needed), `core/control.py`,
-`core/operations.py`, `core/constants.py`, `bin/unpack.py`, `tools/refs`, `tools/read`,
-tests.
+**Affected ownership domains:** `core/runtime_records.py`, `core/app_journal.py` (read
+only, for links), `core/registry.py` (read only, for manifest authority), docs, tests.
 
 **Acceptance criteria:**
-- Each of items 1–6 and 9 has a test that fails before the fix and passes after.
-- The full suite passes on every Python in `VERIFIED_PYTHON`.
-- `bench.py` shows no regression against §6, and `changes` with no baseline is faster.
-- `grep USEFUL_HELPERS` and a second authority-order definition find nothing.
+- A test making 300 observe calls leaves at most ~250 observe artifacts, and state size
+  stops growing across a second batch of calls.
+- Artifacts of `edit`/`write`/`ollama` calls and journal-linked artifacts survive
+  pruning (test).
+- Every receipt row survives; a pruned receipt reports that its artifact was pruned
+  (test).
+- Each test fails on T1 code; the full suite passes on 3.10 and 3.14.
+- A same-session A/B `bench.py` run shows no regression in the repeated-use rows.
 
-**Verification requirements:** suite on 3.10, 3.11, 3.12, 3.13, 3.14; `bench.py
-files=20000`; a CLI check of `run op=help`.
+**Verification requirements:** suite on 3.10 and 3.14 (all five if retention touches
+anything version-sensitive); A/B `bench.py files=20000`.
 
-**Known risks / unknowns:** item 6 cannot be tested on a real macOS/Linux machine here;
-the test simulates a missing `python`. Items 1 and 2 touch code T4 replaces; the fixes
-must carry into the new snapshot store.
+**Known risks / unknowns:** a tool removed after its receipts were written has no
+manifest; such artifacts are treated as observe-level (pruneable) unless journal-linked.
 
 ## 8. Current Decision
 
-**Plan status:** ACTIVE; T1 declared
-**Implementation permission:** NO until the user approves T1.
+**Plan status:** ACTIVE; T1 parked, T2 declared
+**Implementation permission:** NO until the user approves T2.
 
 ## 9. Parked tranches
+
+**T1 — PARKED 2026-09-28.**
+Outcome met, all nine items: vanished paths are absent, not a crash; `changes` with no
+baseline counts without reading; `refs` reports decorated definitions at their `def`
+line; `read` flags invalid UTF-8; the CLI accepts `run op=<name>`; unpack repoints
+`.mcp.json` when `python` is missing; `VERIFIED_PYTHON` = 3.10–3.14, measured; the dead
+env filter is gone and the authority order lives once in `constants.py`; `DocsTests`
+checks every op the docs and MCP instructions name. Also: a shared in-process
+`Target.core()` test helper; MCP instructions became a module constant (`INSTRUCTIONS`).
+Evidence: 46 tests pass on Python 3.10, 3.11, 3.12, 3.13 and 3.14; all six regression
+tests fail on T0 code (git worktree run); A/B bench in §6. Limitations: item 6 is tested
+by simulating a missing `python`, not on a real macOS/Linux machine; the docs check
+errors on T0 code only because `INSTRUCTIONS` did not exist (it is a guard, and its
+self-test proves detection); the lstat fix and no-baseline shortcut live in
+`substrate.py` and must carry into T4's snapshot store. Docs: `.tools/README.md` (CLI
+`op=` form, `read` UTF-8 notice, `changes` before the first snapshot, `.mcp.json` on
+unpack) and `README.md` (python3 on unpack).
 
 **T0 — PARKED 2026-09-27, committed 2026-09-28.**
 Outcome met: `.dev/` holds PROJECT/PLAN/bench and `pack` excludes it (tested; `pack`

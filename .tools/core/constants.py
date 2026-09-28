@@ -4,13 +4,17 @@ DATABASE_SCHEMA_VERSION = 8
 TOOL_CONTRACT_VERSION = 1
 CONTROL_PLANE_VERSION = 1
 
+# Authority levels, weakest first: observe reads, sandbox also writes instrument state
+# (journal, ollama runs), apply also changes the target.
+AUTHORITY_ORDER = {"observe": 0, "sandbox": 1, "apply": 2}
+
 # Interpreter compatibility, recorded by measurement rather than asserted.
 #
 # VERIFIED_PYTHON lists the (major, minor) versions on which the product test suite has
 # actually been run and passed. KNOWN_INCOMPATIBLE lists versions measured to break.
 # An interpreter outside both sets is neither endorsed nor refused: it runs, and the
 # product says that it is unverified. Unobserved means unknown, never absent.
-VERIFIED_PYTHON = frozenset({(3, 10), (3, 11), (3, 12), (3, 13)})
+VERIFIED_PYTHON = frozenset({(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)})  # measured 2026-09-28 (T1)
 KNOWN_INCOMPATIBLE: frozenset = frozenset()
 
 

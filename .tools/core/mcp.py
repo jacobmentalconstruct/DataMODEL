@@ -14,7 +14,7 @@ import sys
 from typing import Any, TextIO
 
 from . import operations, registry, render
-from .constants import PRODUCT_VERSION
+from .constants import AUTHORITY_ORDER, PRODUCT_VERSION
 from .instance import InstanceContext
 
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -27,6 +27,11 @@ _RUN_DESCRIPTION = (
     'op="help" lists all; args.op names one for its contract. '
     "calls=[{op,args},...] runs several in one request."
 )
+INSTRUCTIONS = (
+    "Local project tools for '{project}' (authority: {authority}). Paths are relative to "
+    "the project root. Orient with changes (what moved since last look) or outline/ls, "
+    "then grep/read. run op=help lists everything else."
+)
 
 
 class McpError(RuntimeError):
@@ -38,7 +43,7 @@ class McpError(RuntimeError):
 
 class Server:
     def __init__(self, context: InstanceContext, *, authority: str = "observe", surface: str = "default") -> None:
-        if authority not in operations.AUTHORITY_ORDER:
+        if authority not in AUTHORITY_ORDER:
             raise ValueError(f"unknown authority: {authority}")
         self.context = context
         self.authority = authority
@@ -91,12 +96,8 @@ class Server:
             "protocolVersion": version,
             "serverInfo": {"name": "helpers", "version": PRODUCT_VERSION},
             "capabilities": {"tools": {}},
-            "instructions": (
-                f"Local project tools for '{self.context.target_root.name}' (authority: "
-                f"{self.authority}). Paths are relative to the project root. Orient with "
-                "changes (what moved since last look) or outline/ls, then grep/read. "
-                "run op=help lists everything else."
-            ),
+            "instructions": INSTRUCTIONS.format(
+                project=self.context.target_root.name, authority=self.authority),
         }
 
     # ------------------------------------------------------------------ tools

@@ -10,6 +10,14 @@ from core.tool_runtime import MechanicalContext, run_tool
 _MAX_LINE_CHARS = 2000
 
 
+def _valid_utf8(path: Path) -> bool:
+    try:
+        path.read_bytes().decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
 def _render(context: MechanicalContext, path: Path, arguments: dict, budget: int) -> tuple[str, bool]:
     relative = context.target_relative(path)
     if path.is_dir():
@@ -21,6 +29,8 @@ def _render(context: MechanicalContext, path: Path, arguments: dict, budget: int
         return f"# {relative}: binary file ({human_size(path.stat().st_size)}), not shown\n", False
 
     label = relative
+    if "�" in text and not _valid_utf8(path):
+        label += " [not valid UTF-8: undecodable bytes shown as �; edit refuses this file]"
     if suffix_of(relative) == ".ipynb" and not arguments.get("raw"):
         view = notebook_view(text)
         if view is not None:
@@ -44,7 +54,8 @@ def _render(context: MechanicalContext, path: Path, arguments: dict, budget: int
             listed = ", ".join(f"{s.name} (L{s.line})" for s in matches)
             return f"# {relative}: {wanted!r} is ambiguous: {listed}\n", False
         symbol = matches[0]
-        start, limit, label = symbol.line, symbol.end - symbol.line + 1, f"{relative}:{symbol.name}"
+        start, limit = symbol.line, symbol.end - symbol.line + 1
+        label = label.replace(relative, f"{relative}:{symbol.name}", 1)
     numbers = arguments.get("numbers", True) is not False
     end = min(total, start - 1 + limit)
 

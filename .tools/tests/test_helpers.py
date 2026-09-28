@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -60,6 +61,21 @@ class Target(unittest.TestCase):
         result = self.cli(*argv)
         self.assertNotEqual(result.returncode, 0, result.stdout)
         return result.stdout.strip()
+
+    @contextmanager
+    def core(self):
+        """Import this copy's `core` package in-process (for fault injection); yields
+        (core package, loaded instance context)."""
+        sys.path.insert(0, str(self.instance))
+        try:
+            import core
+            from core.instance import load
+
+            yield core, load(self.instance)
+        finally:
+            sys.path.remove(str(self.instance))
+            for name in [n for n in sys.modules if n == "core" or n.startswith("core.")]:
+                del sys.modules[name]
 
 
 class ReadTests(Target):
@@ -535,20 +551,14 @@ class PackTests(Target):
 
 class McpTests(Target):
     def session(self, authority: str, *requests: dict, surface: str = "default") -> list[dict]:
-        sys.path.insert(0, str(self.instance))
-        try:
+        with self.core() as (_, context):
             from core import mcp
-            from core.instance import load
 
             lines = [json.dumps({"jsonrpc": "2.0", "id": i, **r}) for i, r in enumerate(requests)]
             output = io.StringIO()
-            mcp.serve(load(self.instance), authority=authority, surface=surface,
+            mcp.serve(context, authority=authority, surface=surface,
                       input_stream=io.StringIO("\n".join(lines) + "\n"), output_stream=output)
             return [json.loads(line) for line in output.getvalue().splitlines()]
-        finally:
-            sys.path.remove(str(self.instance))
-            for name in [n for n in sys.modules if n == "core" or n.startswith("core.")]:
-                del sys.modules[name]
 
     def names(self, authority: str, surface: str = "default") -> list[str]:
         (response,) = self.session(authority, {"method": "tools/list"}, surface=surface)
@@ -580,6 +590,135 @@ class McpTests(Target):
         self.assertIn("## 1. ls", text)
         self.assertIn("mutation.apply approval_id preview_id?  (needs apply)", text)
         self.assertNotIn("structuredContent", batch["result"])
+
+
+class RegressionTests(Target):
+    """T1 (.dev/PLAN.md): each test failed before its fix."""
+
+    def test_path_vanishing_mid_walk_is_absent_not_a_crash(self) -> None:
+        with self.core() as (core, context):
+            from core import substrate
+
+            real_lstat = substrate.os.lstat
+
+            def lstat(path, *args, **kwargs):
+                if str(path).replace("\\", "/").endswith("docs/guide.md"):
+                    raise FileNotFoundError(2, "vanished", str(path))
+                return real_lstat(path, *args, **kwargs)
+
+            substrate.os.lstat = lstat
+            try:
+                report = substrate.changes(context)
+                substrate.refresh(context)
+            finally:
+                substrate.os.lstat = real_lstat
+        self.assertNotIn("docs/guide.md", report["added"])
+        self.assertIn("docs/win.txt", report["added"])
+
+    def test_changes_without_baseline_does_not_hash(self) -> None:
+        with self.core() as (core, context):
+            from core import substrate
+
+            real_sha256, calls = substrate.hashlib.sha256, []
+
+            def counting(*args, **kwargs):
+                calls.append(1)
+                return real_sha256(*args, **kwargs)
+
+            substrate.hashlib.sha256 = counting
+            try:
+                report = substrate.changes(context)
+            finally:
+                substrate.hashlib.sha256 = real_sha256
+        self.assertIn("no snapshot yet", report["text"])
+        self.assertEqual(calls, [])
+
+    def test_refs_reports_decorated_definition_at_its_def_line(self) -> None:
+        self.write("deco.py", "import functools\n\n@functools.cache\n@staticmethod\ndef cached():\n    return 1\n")
+        text = self.out("refs", "name=cached", "text=false")
+        self.assertIn("def:\n  deco.py:5 def cached():", text)
+
+    def test_read_flags_invalid_utf8(self) -> None:
+        (self.root / "latin.txt").write_bytes(b"caf\xe9\n")
+        self.assertIn("[not valid UTF-8", self.out("read", "path=latin.txt"))
+        self.write("literal.txt", "a real � character\n")  # valid UTF-8: no notice
+        self.assertNotIn("not valid UTF-8", self.out("read", "path=literal.txt"))
+
+    def test_cli_accepts_op_equals_form(self) -> None:
+        self.assertIn("authority held: apply", self.out("run", "op=help"))
+        self.assertIn("read [observe]", self.out("run", "op=help", "op=read"))
+        self.assertIn("1\t# Guide", self.out("run", "op=read", "path=docs/guide.md"))
+
+    def test_unpack_repoints_mcp_command_when_python_is_missing(self) -> None:
+        self.write(".mcp.json", json.dumps({"mcpServers": {"helpers": {
+            "type": "stdio", "command": "python", "args": [".tools/bin/helpers.py", "mcp"]}}}))
+        archive = Path(self._tmp.name) / "skel.zip"
+        self.out("pack", str(archive))
+        environment = {k: v for k, v in os.environ.items() if k.upper() != "PATH"}
+        environment["PATH"] = ""  # neither python nor python3 can be found
+        target = Path(self._tmp.name) / "bare"
+        run = subprocess.run([sys.executable, str(archive), str(target)], capture_output=True,
+                             text=True, env=environment)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        config = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["mcpServers"]["helpers"]["command"], sys.executable)
+        if shutil.which("python"):  # where `python` exists, the file is left as packed
+            normal = Path(self._tmp.name) / "normal"
+            subprocess.run([sys.executable, str(archive), str(normal)], capture_output=True, text=True)
+            config = json.loads((normal / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["mcpServers"]["helpers"]["command"], "python")
+
+
+class DocsTests(unittest.TestCase):
+    """Every op, tool or command the documents name must exist (.dev/PLAN.md S2)."""
+
+    # Namespaces that ever held ops: a doc still naming a removed one is caught.
+    NAMESPACES = {"receipts", "artifacts", "journal", "substrate", "awareness", "mutation"}
+    COMMANDS = {"help", "init", "status", "mcp", "mcp-config", "pack", "run"}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.path.insert(0, str(SOURCE))
+        try:
+            from core import mcp, operations
+
+            cls.ops = set(operations.OPERATIONS)
+            cls.tools = {path.parent.name for path in (SOURCE / "tools").glob("*/manifest.json")}
+            cls.mcp_text = mcp._RUN_DESCRIPTION + "\n" + mcp.INSTRUCTIONS
+        finally:
+            sys.path.remove(str(SOURCE))
+            for name in [n for n in sys.modules if n == "core" or n.startswith("core.")]:
+                del sys.modules[name]
+
+    def unknown(self, text: str) -> set[str]:
+        import re
+
+        spans = re.findall(r"```.*?```", text, re.S) + re.findall(r"`([^`\n]+)`", text)
+        known = self.ops | self.tools | self.COMMANDS
+        bad: set[str] = set()
+        for span in spans:
+            for prefix, rest in re.findall(r"\b([a-z]+)\.([a-z_]+)\b", span):
+                if prefix in self.NAMESPACES and f"{prefix}.{rest}" not in self.ops:
+                    bad.add(f"{prefix}.{rest}")
+            for name in re.findall(r'(?:\brun\b|\bhelpers\b|\bop=)\s*"?([a-z][a-z_.-]*)', span):
+                if name != "op" and name not in known:
+                    bad.add(name)
+        return bad
+
+    def test_extractor_catches_unknown_names(self) -> None:
+        self.assertEqual(self.unknown("`run journal.bogus` and `substrate.nothing` and `op=nope`"),
+                         {"journal.bogus", "substrate.nothing", "nope"})
+        self.assertEqual(self.unknown("`run journal.add title=x` `helpers help` `run op=help`"), set())
+
+    def test_documents_name_only_existing_ops(self) -> None:
+        root = SOURCE.parent
+        documents = [SOURCE / "README.md", root / "AGENTS.md", root / "README.md",
+                     *sorted((root / ".framework").glob("*.md"))]
+        for path in [p for p in documents if p.is_file()]:
+            with self.subTest(document=path.name):
+                self.assertEqual(self.unknown(path.read_text(encoding="utf-8")), set())
+        with self.subTest(document="MCP instructions"):
+            self.assertEqual(self.unknown("```" + self.mcp_text + "```"), set())
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ def _python_hits(tree: ast.Module, qualified: str, name: str) -> dict[str, set[i
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 qualname = prefix + node.name
                 if node.name == name and (qualified == name or qualname.endswith(qualified)):
-                    hits["def"].add(min([node.lineno] + [d.lineno for d in node.decorator_list]))
+                    hits["def"].add(node.lineno)  # the def/class line, not its first decorator
                 visit_defs(node.body, qualname + ".")
             elif isinstance(node, (ast.Assign, ast.AnnAssign)) and not prefix:
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]

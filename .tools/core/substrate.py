@@ -582,6 +582,8 @@ def _resource_records(
     context: InstanceContext,
     known: dict[str, dict] | None = None,
     stats: dict | None = None,
+    *,
+    hash_content: bool = True,
 ) -> list[dict]:
     records: list[dict] = []
     excluded = context.instance_root.resolve()
@@ -620,8 +622,11 @@ def _resource_records(
             kind = "symlink" if path.is_symlink() else "directory"
             relative = prefix + name
             bulk = kind == "directory" and rules is not None and rules.ignored(relative, True)
-            records.append(_describe_resource(context, path, kind, software_context=in_software,
-                                              bulk=bulk, relative=relative))
+            record = _describe_resource(context, path, kind, software_context=in_software,
+                                        bulk=bulk, relative=relative)
+            if record is None:  # vanished since the directory was listed
+                continue
+            records.append(record)
             if kind == "directory" and (bulk or _untraversed_subtree_kind(name, software_context=in_software)):
                 continue
             traversed.append(name)
@@ -633,7 +638,10 @@ def _resource_records(
                 continue
             path = here / name
             kind = "symlink" if os.path.islink(path) else "file"
-            records.append(_describe_resource(context, path, kind, known=known, relative=relative))
+            record = _describe_resource(context, path, kind, known=known, relative=relative,
+                                        hash_content=hash_content)
+            if record is not None:  # None: vanished since the directory was listed
+                records.append(record)
     for record in records:
         if record["path"] in access_errors:
             _mark_access_limited(record, access_errors[record["path"]])
@@ -692,10 +700,16 @@ def _describe_resource(
     known: dict[str, dict] | None = None,
     bulk: bool = False,
     relative: str | None = None,
-) -> dict:
+    hash_content: bool = True,
+) -> dict | None:
+    """Describe one path, or None when it no longer exists (deleted mid-walk, e.g. an
+    editor's temporary file): it is then simply absent from this inventory."""
     if relative is None:
         relative = path.relative_to(context.target_root).as_posix()
-    stat = os.lstat(path)
+    try:
+        stat = os.lstat(path)
+    except FileNotFoundError:
+        return None
     record = {
         "handle": _resource_handle(relative, kind),
         "path": relative,
@@ -706,7 +720,7 @@ def _describe_resource(
         "text_like": kind == "file" and _is_text_like(relative),
     }
     record["domain"] = _domain_signal({**record, "software_context": software_context, "bulk": bulk})
-    if kind == "file" and record["domain"]["content_basis"] != "metadata_only":
+    if hash_content and kind == "file" and record["domain"]["content_basis"] != "metadata_only":
         prior = (known or {}).get(relative)
         if (prior and prior.get("content_hash") and prior.get("kind") == "file"
                 and prior.get("size_bytes") == stat.st_size and prior.get("mtime_ns") == stat.st_mtime_ns):
@@ -795,7 +809,9 @@ def changes(context: InstanceContext, limit: int = 200, *, respect_gitignore: bo
     finally:
         connection.close()
 
-    current = {record["path"]: record for record in _resource_records(context, known)}
+    # Without a baseline the report is only a file count, so skip content hashing.
+    current = {record["path"]: record
+               for record in _resource_records(context, known, hash_content=inventory is not None)}
     scope_note = ""
     if respect_gitignore:
         path_filter = PathFilter(context.target_root)

@@ -8,13 +8,10 @@ import time
 from dataclasses import dataclass
 
 from . import registry, runtime_records, storage
-from .constants import CONTROL_PLANE_VERSION, TOOL_CONTRACT_VERSION
+from .constants import AUTHORITY_ORDER, CONTROL_PLANE_VERSION, TOOL_CONTRACT_VERSION
 from .containment import ContainmentError, resolve_declared_paths
 from .contracts import ToolManifest, validate_json
 from .instance import InstanceContext
-
-_AUTHORITY_ORDER = {"observe": 0, "sandbox": 1, "apply": 2}
-
 
 @dataclass(frozen=True)
 class ControlPlane:
@@ -129,7 +126,7 @@ class ControlPlane:
 
         if client == "unknown":
             return stop("refusal", "invalid_client", "client is required")
-        if authority not in _AUTHORITY_ORDER:
+        if authority not in AUTHORITY_ORDER:
             return stop("refusal", "invalid_authority", f"unknown authority: {authority}")
         if not isinstance(arguments, dict):
             return stop("refusal", "invalid_arguments", "arguments must be an object")
@@ -137,7 +134,7 @@ class ControlPlane:
             manifest = registry.get(self.context, tool_id)
         except registry.RegistryError as exc:
             return stop("refusal", "registry_error", str(exc))
-        if _AUTHORITY_ORDER[authority] < _AUTHORITY_ORDER[manifest.authority]:
+        if AUTHORITY_ORDER[authority] < AUTHORITY_ORDER[manifest.authority]:
             return stop(
                 "refusal", "authority_denied",
                 f"{tool_id} requires {manifest.authority} authority; caller supplied {authority}",
@@ -228,7 +225,7 @@ def _child_environment(context: InstanceContext) -> dict[str, str]:
     environment = {
         name: value
         for name, value in os.environ.items()
-        if name.upper() in allow and not name.startswith("USEFUL_HELPERS_IDENTITY_")
+        if name.upper() in allow
     }
     environment["PYTHONPATH"] = str(context.instance_root)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"

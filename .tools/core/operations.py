@@ -15,11 +15,9 @@ from typing import Callable
 
 from . import app_journal, awareness, host, mutation, registry, runtime_records, substrate
 from .render import compact
+from .constants import AUTHORITY_ORDER
 from .control import ControlPlane
 from .instance import InstanceContext
-
-AUTHORITY_ORDER = {"observe": 0, "sandbox": 1, "apply": 2}
-
 
 class OperationError(ValueError):
     pass

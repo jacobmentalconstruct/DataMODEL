@@ -7,9 +7,10 @@ import sys
 from pathlib import Path
 
 from . import host, operations, registry, render
+from .constants import AUTHORITY_ORDER
 from .instance import default_archive, load, package
 
-_AUTHORITIES = ("observe", "sandbox", "apply")
+_AUTHORITIES = tuple(AUTHORITY_ORDER)
 _COMMANDS = {"init", "status", "mcp", "mcp-config", "pack", "run"}
 
 
@@ -76,6 +77,8 @@ def _run_arguments(context, arguments) -> dict:
 
 
 def _run(context, arguments) -> int:
+    if arguments.op.startswith("op="):  # `run op=grep ...`, the form the MCP `run` tool uses
+        arguments.op = arguments.op[3:]
     if arguments.op == "help":
         pairs = dict(pair.partition("=")[::2] for pair in arguments.pairs)
         print(operations.help_text(context, arguments.authority, pairs.get("op")))

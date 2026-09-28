@@ -44,7 +44,8 @@ To reuse this skeleton (or snapshot any project built on it) as a single archive
 - **Unpack**: double-click `<ProjectName>-unpack.bat` (Windows), or run
   `sh <ProjectName>-unpack.sh` (macOS/Linux). Pick a folder in the dialog that opens. Or
   run `python <ProjectName>.zip <folder>` directly. Files already in the folder are
-  never overwritten.
+  never overwritten. If your system calls Python `python3`, unpacking sets up the tool
+  server to use it.
 
 Pack rather than zipping by hand: packing leaves out the copy's private state (its
 identity, tool history, journal and snapshots), your local agent settings
