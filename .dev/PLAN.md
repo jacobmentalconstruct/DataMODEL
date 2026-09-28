@@ -57,13 +57,28 @@ no place for its own plan (resolved in T0 by `.dev/`, excluded from `pack`).
    (apply/sandbox tools, including `ollama`); keep the last 200 full artifacts of
    observe-only calls. Journal entries are never pruned.
 
+**Added 2026-09-28**, after the user stated the end state: work moves to local Ollama
+models only, and Claude Code's tools (shell, permission prompts, task list, web, the agent
+loop) go away with it. The skeleton must supply what the work needs.
+
+5. A minimal local agent loop is built into DataMODEL: it drives an Ollama model over
+   the same helpers operations.
+6. A governed command runner (`exec`) with a per-project allowlist replaces the shell.
+7. Approval stays per tranche, also for local models; `edit`/`write`/`exec` act under
+   `apply` authority and every call is receipted. A per-call gate is deferred.
+   (Decision 1's removal of the mutation workflow stands on this basis, not on Claude
+   Code's permission prompts, which the local setup will not have.)
+8. No web access for now (local-only).
+
 ## 3. Target end state
 
 A smaller toolset with one responsibility per core module: a snapshot store for
 `changes`, receipts with retention, the journal, contracts and the control plane, and the
 entrances (CLI and MCP). One write path. Docs, help text and MCP instructions name only
 operations that exist. Behaviour the tools have today is kept, with the bugs above fixed
-under regression tests.
+under regression tests. Added by decisions 5–6: an allowlisted command runner and a
+minimal local agent loop, so a local Ollama model can do an agent's work on a project
+without Claude Code.
 
 ## 4. Stop conditions
 
@@ -85,6 +100,14 @@ Development ends when all of these hold:
 - **S7 Field test:** a scripted end-to-end run on a fresh copy of _theCELL passes, with
   timings recorded; the suite passes on Python 3.10 and 3.14.
 - **S8 Plan has a home:** `.dev/` exists and `pack` excludes it. *(Met in T0.)*
+- **S9 Command runner:** `exec` runs only allowlisted commands, in the project folder,
+  under `apply` authority, with a timeout, capped output and a receipt; the allowlist is
+  a project-editable file; refusals are tested.
+- **S10 Local loop:** a local Ollama model, driven by the skeleton's own loop, completes a
+  small scripted task on a copy of _theCELL (orient, read, edit, run the tests through
+  `exec`, report), with every tool call receipted; nothing from Claude Code is needed.
+
+S7's field test includes the S10 run.
 
 ## 5. Tranches
 
@@ -97,7 +120,11 @@ Development ends when all of these hold:
 | T4a | Replace substrate + awareness with a small snapshot store (additive schema step that carries the `changes` baseline over); remove their ops | S1, S3 |
 | T4b | Squash the schema: drop dead tables, one create-schema path, reclassify pre-T2 artifacts, convert old rows, delete compatibility code; journal and receipts carry across | S1, S6 |
 | T5 | Polish: compact op output, `map` ignores skeleton files, docs refresh | S2 |
-| T6 | Field test on _theCELL under 3.10 and 3.14; repack; commit and push. End. | S7 |
+| T6 | Command runner `exec` with a project allowlist (decision 6) | S9 |
+| T7 | Minimal local agent loop over Ollama and the helpers ops (decision 5); its shape is settled with the user when declared | S10 |
+| T8 | Field test on _theCELL, including a local-loop run, under 3.10 and 3.14; repack; commit and push. End. | S7, S10 |
+
+T6–T8 were added 2026-09-28 (decisions 5–8); the old T6 (field test) became T8.
 
 T1 and T2 are independent of each other. T4 depends on T3 (mutation read awareness). T4 was
 split into T4a and T4b on 2026-09-28 to keep each tranche small (WORKFLOW addendum).
