@@ -669,6 +669,66 @@ class RegressionTests(Target):
             self.assertEqual(config["mcpServers"]["helpers"]["command"], "python")
 
 
+class RetentionTests(Target):
+    """T2 (.dev/PLAN.md decision 4): observe results are bounded; nothing cited is lost."""
+
+    def flood(self, count: int) -> list[str]:
+        """Record `count` observe-only calls with ~8 KB of incompressible result each."""
+        with self.core() as (core, context):
+            from core import runtime_records
+
+            receipts = []
+            for _ in range(count):
+                receipt = runtime_records.begin_receipt(context, tool_id="read", client="test",
+                                                        authority="observe")
+                runtime_records.complete_receipt(context, receipt, status="success",
+                                                 envelope={"blob": os.urandom(4000).hex()},
+                                                 observation=True)
+                receipts.append(receipt)
+            return receipts
+
+    def state(self) -> tuple[int, int, int]:
+        """(observation artifacts, receipts, database bytes after a WAL checkpoint)."""
+        import sqlite3
+
+        path = self.instance / "state/workbench.sqlite3"
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            kept = connection.execute(
+                "SELECT COUNT(*) FROM operational_artifacts WHERE kind = 'observation'").fetchone()[0]
+            receipts = connection.execute("SELECT COUNT(*) FROM operation_receipts").fetchone()[0]
+        finally:
+            connection.close()
+        return kept, receipts, path.stat().st_size
+
+    def test_observe_results_are_bounded_and_state_stops_growing(self) -> None:
+        self.flood(300)
+        kept, receipts, size = self.state()
+        self.assertLessEqual(kept, 250)
+        self.assertGreaterEqual(receipts, 300)  # every receipt row survives
+        self.flood(300)
+        kept_again, receipts_again, size_again = self.state()
+        self.assertLessEqual(kept_again, 250)
+        self.assertGreaterEqual(receipts_again, 600)
+        self.assertLess(size_again, size * 1.15, "state kept growing under read-only use")
+
+    def test_writes_and_journal_linked_results_survive(self) -> None:
+        cited = json.loads(self.out("read", "path=docs/guide.md", "--json"))
+        linked = json.loads(self.out("read", "path=src/app.ts", "--json"))
+        edit = json.loads(self.out("edit", "path=src/app.ts", "old=App", "new=Main", "--json"))
+        entry = json.loads(self.out("run", "journal.add", "title=evidence"))["entry_id"]
+        self.out("run", "journal.link", f"entry_id={entry}", f"target_id={cited['receipt_id']}")
+        self.out("run", "journal.link", f"entry_id={entry}", f"target_id={linked['artifact_id']}")
+        early = self.flood(1)[0]
+        self.flood(300)
+        for survivor in (cited, linked, edit):
+            self.out("run", "artifacts.read", f"artifact_id={survivor['artifact_id']}")
+        receipt = json.loads(self.out("run", "receipts.read", f"receipt_id={early}"))
+        self.assertIsNone(receipt["artifact_id"])
+        self.assertIn("pruned under retention", receipt["artifact"])
+
+
 class DocsTests(unittest.TestCase):
     """Every op, tool or command the documents name must exist (.dev/PLAN.md S2)."""
 

@@ -44,6 +44,7 @@ class ControlPlane:
         exit_code: int | None = None,
         manifest_digest: str | None = None,
         process: dict | None = None,
+        observation: bool = False,
     ) -> dict:
         duration_ms = int(response.get("duration_ms") or (time.monotonic() - started) * 1000)
         response["receipt_id"] = receipt_id
@@ -60,6 +61,7 @@ class ControlPlane:
                 duration_ms=duration_ms,
                 manifest_digest=manifest_digest,
                 process=process,
+                observation=observation,
             )
         except runtime_records.RecordError as exc:
             return self._receipt_failure(response, str(exc), started)
@@ -122,6 +124,8 @@ class ControlPlane:
                 receipt_id, response, status, started, error_code=code, result_ok=False,
                 exit_code=exit_code if isinstance(exit_code, int) else None,
                 manifest_digest=digest, process=process,
+                # Refused before running, or an observe tool: nothing could have changed.
+                observation=status == "refusal" or manifest is None or manifest.authority == "observe",
             )
 
         if client == "unknown":
@@ -202,6 +206,7 @@ class ControlPlane:
             manifest_digest=manifest.digest,
             # stdout parsed cleanly and is already held verbatim in response["result"].
             process={"stderr": process.stderr},
+            observation=manifest.authority == "observe",
         )
 
 

@@ -137,56 +137,82 @@ and read everything again in `mark`; T1 pays it once, in `mark`, and `changes` a
 (T0 code: idle `changes` 2.2 s then, 3.4–3.9 s now), so **compare tranches only by A/B
 runs in one session**, and judge S3 on the idle, 1%-edited and second-`mark` rows.
 
+**T2 A/B (2026-09-28, same session: T1 code, then T2 code):**
+
+| measure | T1 | T2 |
+|---|---|---|
+| `.tools` code, tests excluded | 8,175 lines | 8,202 lines |
+| `changes`, idle | 3.5 s | 3.3 s |
+| `changes`, 1% edited | 5.1 s | 4.9 s |
+| `mark`, second | 16.5 s | 14.3 s |
+| state after two marks | 2.53 KB/file | 2.53 KB/file |
+| state after 300 / 600 observe calls (~8 KB results) | 1,736 / 3,272 KB | 1,496 / 1,540 KB |
+
+The last row comes from an ad hoc run of the same flood against each copy's receipt API:
+T1 grows linearly, T2 stays flat. (`bench.py`'s "5 reads" row cannot show retention: 5
+calls are far below the 200 kept.)
+
 ## 7. Current tranche
 
-**ID:** T2 — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
+**ID:** T3 — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
 
-**Expected outcome:** state storage stops growing with ordinary read-only use, per
-decision 4, without losing any record the project cites as evidence.
+**Expected outcome:** one write path. `edit`/`write` under `apply` authority are the only
+way the tools change the project; approval happens per tranche, as the WORKFLOW cycle
+describes; the governed-mutation workflow and every mention of it are gone (decision 1).
 
 **Scope:**
-1. Retention in `core/runtime_records.py`: receipt rows are kept forever. Full artifacts
-   are kept for calls to tools whose manifest authority is `sandbox` or `apply` (writes,
-   `ollama`), and for any artifact a journal entry links to. For calls to `observe` tools
-   (and refusals that never reached a tool), only the newest 200 artifacts are kept.
-2. Pruning clears the receipt's `artifact_id` before deleting (foreign keys are
-   enforced), runs cheaply as receipts complete, not on every call, and hands pages back
-   (incremental vacuum).
-3. Reading a pruned artifact through its receipt says it was pruned under retention,
-   not "not found".
-4. Remove the dead `create_artifact` (no callers).
-5. Document the retention rule in `.tools/README.md` and `WORKFLOW.md` ("cite receipt
-   ids": link the journal entry to them to keep their full artifacts).
+1. Delete `core/mutation.py` and the six `mutation.*` ops from `core/operations.py`.
+2. Docs: replace WORKFLOW's "User-approved writes" row with the tranche approval and
+   `edit`/`write` (receipted); fix its `journal.link` row, which says entries link to
+   "receipts or mutations" (the code accepts only receipts and artifacts); remove the
+   reviewed-write paragraph from `.tools/README.md`; drop "governed mutation" from the
+   MCP `run` description; update the op docstrings in `operations.py` and `render.py`.
+3. Tests: remove `test_governed_mutation_flow` (authority gating stays covered by
+   `test_authority_gate` and `test_client_cannot_self_elevate`); point the MCP help
+   assertion at a surviving apply-level entry. `DocsTests` keeps `mutation` in its
+   namespaces, so any leftover mention fails.
 
-**Explicit non-goals:** pruning receipt rows or journal entries; changing what an
-artifact contains (T5); schema changes (T4). If a column turns out to be needed, T2
-stops and reports rather than adding it.
+**Explicit non-goals:** dropping the `mutation_*` tables and their migrations, and
+removing `awareness.py` (T4: schema squash; awareness still backs `changes mark=true`);
+output formatting (T5).
 
-**Affected ownership domains:** `core/runtime_records.py`, `core/app_journal.py` (read
-only, for links), `core/registry.py` (read only, for manifest authority), docs, tests.
+**Affected ownership domains:** `core/mutation.py` (deleted), `core/operations.py`,
+`core/mcp.py`, `core/render.py`, `.framework/WORKFLOW.md`, `.tools/README.md`, tests.
 
 **Acceptance criteria:**
-- A test making 300 observe calls leaves at most ~250 observe artifacts, and state size
-  stops growing across a second batch of calls.
-- Artifacts of `edit`/`write`/`ollama` calls and journal-linked artifacts survive
-  pruning (test).
-- Every receipt row survives; a pruned receipt reports that its artifact was pruned
-  (test).
-- Each test fails on T1 code; the full suite passes on 3.10 and 3.14.
-- A same-session A/B `bench.py` run shows no regression in the repeated-use rows.
+- No `mutation` op, module or doc mention remains outside `core/storage.py` migrations
+  and `.dev/` (grep); `DocsTests` passes.
+- `help` lists no `mutation.*` op; the MCP `run` description no longer mentions it.
+- The full suite passes on 3.10 and 3.14.
+- `.tools` code shrinks by about the size of `mutation.py` (771 lines).
 
-**Verification requirements:** suite on 3.10 and 3.14 (all five if retention touches
-anything version-sensitive); A/B `bench.py files=20000`.
+**Verification requirements:** grep; suite on 3.10 and 3.14; `helpers help`.
 
-**Known risks / unknowns:** a tool removed after its receipts were written has no
-manifest; such artifacts are treated as observe-level (pruneable) unless journal-linked.
+**Known risks / unknowns:** an existing copy holding mutation records keeps them, unused,
+until T4's schema squash drops the tables; no data in this repository's copy depends on
+them (no mutation op appears in its receipts).
 
 ## 8. Current Decision
 
-**Plan status:** ACTIVE; T1 parked, T2 declared
-**Implementation permission:** NO until the user approves T2.
+**Plan status:** ACTIVE; T2 parked, T3 declared
+**Implementation permission:** NO until the user approves T3.
 
 ## 9. Parked tranches
+
+**T2 — PARKED 2026-09-28.**
+Outcome met: read-only use no longer grows state. Receipt rows are kept forever; full
+artifacts are kept for tools that ran with `sandbox`/`apply` authority and for anything a
+journal entry links to (directly or through its receipt); observe results and refusals
+keep only the newest 200, pruned in batches of 50 with incremental vacuum; a pruned
+receipt says so; `artifacts.read` of a missing id mentions retention; dead
+`create_artifact` removed; retention documented in `.tools/README.md` and `WORKFLOW.md`.
+Deviation from the declared scope: instead of looking up manifest authority in the
+registry at prune time, the control plane classifies each result as it completes and
+records it in the artifact's existing `kind` column (`observation` vs `tool_result`), so
+`runtime_records` needs no registry dependency and no schema change. Evidence: 48 tests
+pass on Python 3.10–3.14; both retention tests fail on T1 code; the flood comparison and
+A/B bench in §6. Limitation: artifacts written before T2 all have kind `tool_result`, so
+existing copies never prune them; T4's schema squash should reclassify them.
 
 **T1 — PARKED 2026-09-28.**
 Outcome met, all nine items: vanished paths are absent, not a crash; `changes` with no

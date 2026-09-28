@@ -4,6 +4,12 @@ Governed, local tools for the project that contains this `.tools/` folder. Every
 contained to the project, checked against its contract, and receipted in
 `state/workbench.sqlite3`; what comes back is compact text.
 
+Retention: every receipt row is kept. Each call's full result (its artifact) is kept for
+tools that can change something (`edit`, `write`, `ollama`) and for anything a journal
+entry links to. Results of read-only calls and refusals are kept for the newest 200 only;
+an older receipt then says its artifact was pruned. To keep a result as evidence, link it:
+`run journal.link entry_id=… target_id=<receipt or artifact id>`.
+
 ## Setup
 
 None. On first use, a fresh copy creates its own identity (`instance.json`) and history
