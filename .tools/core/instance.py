@@ -105,6 +105,8 @@ def _validate(instance_root: Path, document: object) -> InstanceContext:
 # carry them, or every project unpacked from it would share one identity and one history.
 PRIVATE = (MANIFEST_NAME, "state", "logs")
 _NEVER_PACKED = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
+# Per-user agent settings (target-relative): local to one person's machine, never shared.
+_LOCAL_SETTINGS = {Path(".claude/settings.local.json")}
 _UNPACK_BAT = """@echo off
 rem Unpack {name}.zip into a folder you choose (needs Python 3).
 where python >nul 2>nul && (python "%~dp0{name}.zip" %*) || (py -3 "%~dp0{name}.zip" %*)
@@ -141,6 +143,8 @@ def package(instance_root: str | Path, destination: str | Path) -> dict:
         archive.write(instance_path / "bin" / "unpack.py", "__main__.py")
         for path in sorted(target_path.rglob("*")):
             if path == destination or any(part in _NEVER_PACKED for part in path.parts):
+                continue
+            if path.relative_to(target_path) in _LOCAL_SETTINGS:
                 continue
             resolved = path.resolve()
             if any(resolved == p or p in resolved.parents for p in private):

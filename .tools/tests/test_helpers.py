@@ -488,12 +488,16 @@ class PackTests(Target):
         import zipfile
 
         self.out("journal.add", "title=private history", "--authority", "sandbox")
+        self.write(".claude/settings.local.json", "{}\n")
+        self.write(".claude/settings.json", "{}\n")
         archive = Path(self._tmp.name) / "skeleton.zip"
         self.out("pack", str(archive))
         names = zipfile.ZipFile(archive).namelist()
         self.assertIn(".tools/bin/helpers.py", names)
         self.assertIn("src/pkg/models.py", names)
-        self.assertFalse([n for n in names if n.startswith((".tools/state", ".tools/instance.json"))])
+        self.assertIn(".claude/settings.json", names)  # shared settings travel; local ones don't
+        self.assertFalse([n for n in names if n.startswith((".tools/state", ".tools/instance.json",
+                                                              ".claude/settings.local.json"))])
         clutter = Path(self._tmp.name) / "old-files"  # extract into an existing folder of files
         clutter.mkdir()
         (clutter / "notes.txt").write_text("old\n")
