@@ -4,16 +4,16 @@ Installed tools (manifests under tools/) are invoked through the ControlPlane; t
 operations here project the host's own services. Each declares the minimum authority an
 entrance must hold to use it:
 
-  observe  read anything, create previews, refresh observations
+  observe  read anything, refresh observations
   sandbox  + write instrument state (journal)
-  apply    + change the target (edit/write tools, mutation approve/apply)
+  apply    + change the target (the edit/write tools: the one write path)
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
 
-from . import app_journal, awareness, host, mutation, registry, runtime_records, substrate
+from . import app_journal, awareness, host, registry, runtime_records, substrate
 from .render import compact
 from .constants import AUTHORITY_ORDER
 from .control import ControlPlane
@@ -136,22 +136,6 @@ _OPERATIONS = [
               lambda c, a: awareness.refresh(c)),
     Operation("awareness.drill", "observe", "item_id", "evidence behind an awareness item",
               lambda c, a: {"ok": True, "drill": awareness.drill(c, _req(a, "item_id"))}),
-    Operation("mutation.status", "observe", "", "governed mutation counts",
-              lambda c, a: mutation.status(c)),
-    Operation("mutation.preview_write", "observe", "path content overwrite?",
-              "stage a reviewed write (needs fresh awareness)",
-              lambda c, a: mutation.preview_write(
-                  c, path=_req(a, "path"), content=_text(a, "content"),
-                  overwrite=bool(a.get("overwrite", False)))),
-    Operation("mutation.approve", "apply", "preview_id journal_entry_id?", "approve a preview",
-              lambda c, a: mutation.approve(c, _req(a, "preview_id"),
-                                            journal_entry_id=a.get("journal_entry_id"))),
-    Operation("mutation.apply", "apply", "approval_id preview_id?", "apply an approval",
-              lambda c, a: mutation.apply(c, _req(a, "approval_id"), preview_id=a.get("preview_id"))),
-    Operation("mutation.history", "observe", "limit?", "mutation records",
-              lambda c, a: {"ok": True, "mutations": mutation.list_history(c, _limit(a, 50))}),
-    Operation("mutation.links", "observe", "source_id", "links for a mutation record",
-              lambda c, a: {"ok": True, "links": mutation.links(c, _req(a, "source_id"))}),
 ]
 OPERATIONS: dict[str, Operation] = {op.name: op for op in _OPERATIONS}
 

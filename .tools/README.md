@@ -114,8 +114,7 @@ helpers help
 ```
 
 Other ops (`helpers help` lists them): `status`, `receipts.*`, `artifacts.*`, `journal.*`,
-`substrate.*`, `awareness.*`, and the reviewed write
-`mutation.preview_write → mutation.approve → mutation.apply`.
+`substrate.*`, `awareness.*`. Only `edit` and `write` change project files.
 
 ## Tests
 

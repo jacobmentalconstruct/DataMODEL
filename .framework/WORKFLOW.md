@@ -50,6 +50,6 @@ When the project contains `.tools/`, these steps have direct instruments:
 |---|---|
 | 1 Observe / 13 Reorient | `changes` (what moved since the last parked snapshot); `map` for a project not seen before; then `outline`, `deps`, `schema`, `refs` where they point |
 | 2 Declare state, 12 Park | `run journal.add type=status status=parked title=… body=…` (evidence, limitations, deferrals, next step), then `changes mark=true` so reorientation starts from the parked state |
-| Project record (decisions, deferrals, backlog) | `journal.add type=decision\|backlog\|entry`; statuses `open closed decided parked blocked`; `journal.link` ties entries to receipts or mutations |
+| Project record (decisions, deferrals, backlog) | `journal.add type=decision\|backlog\|entry`; statuses `open closed decided parked blocked`; `journal.link` ties entries to receipts (`operation:…`) or artifacts (`artifact:…`) |
 | Proof over vibes | every tool call is receipted (`receipts.list`, `artifacts.read`); cite receipt ids as evidence and `journal.link` the entry to them, which keeps their full results (read-only results are otherwise pruned beyond the newest 200) |
-| User-approved writes | `mutation.preview_write` → user approves (`mutation.approve`) → `mutation.apply` |
+| User-approved writes | the user approves the tranche (step 6); within it, `edit` and `write` are the one write path, each call receipted and needing `apply` authority |

@@ -94,11 +94,13 @@ Development ends when all of these hold:
 | T1 | Low-risk fixes and stale-code removal; docs-vs-ops test | S5, S6 (partly), S2 test |
 | T2 | Receipt retention | S4 |
 | T3 | Remove the mutation workflow; align WORKFLOW and docs | S2 |
-| T4 | Replace substrate + awareness with a small snapshot store; squash the schema, carrying the journal and receipts across; re-measure | S1, S3, S6 |
+| T4a | Replace substrate + awareness with a small snapshot store (additive schema step that carries the `changes` baseline over); remove their ops | S1, S3 |
+| T4b | Squash the schema: drop dead tables, one create-schema path, reclassify pre-T2 artifacts, convert old rows, delete compatibility code; journal and receipts carry across | S1, S6 |
 | T5 | Polish: compact op output, `map` ignores skeleton files, docs refresh | S2 |
 | T6 | Field test on _theCELL under 3.10 and 3.14; repack; commit and push. End. | S7 |
 
-T1 and T2 are independent of each other. T4 depends on T3 (mutation reads awareness).
+T1 and T2 are independent of each other. T4 depends on T3 (mutation read awareness). T4 was
+split into T4a and T4b on 2026-09-28 to keep each tranche small (WORKFLOW addendum).
 
 ## 6. Baseline (T0)
 
@@ -154,50 +156,76 @@ calls are far below the 200 kept.)
 
 ## 7. Current tranche
 
-**ID:** T3 — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
+**ID:** T4a — **Status:** DECLARED (2026-09-28), awaiting the user's go-ahead
 
-**Expected outcome:** one write path. `edit`/`write` under `apply` authority are the only
-way the tools change the project; approval happens per tranche, as the WORKFLOW cycle
-describes; the governed-mutation workflow and every mention of it are gone (decision 1).
+**Expected outcome:** `changes` runs on a small snapshot store instead of the substrate
+and awareness machinery, with identical behaviour and a much smaller state; the 16
+`substrate.*`/`awareness.*` ops are gone.
 
 **Scope:**
-1. Delete `core/mutation.py` and the six `mutation.*` ops from `core/operations.py`.
-2. Docs: replace WORKFLOW's "User-approved writes" row with the tranche approval and
-   `edit`/`write` (receipted); fix its `journal.link` row, which says entries link to
-   "receipts or mutations" (the code accepts only receipts and artifacts); remove the
-   reviewed-write paragraph from `.tools/README.md`; drop "governed mutation" from the
-   MCP `run` description; update the op docstrings in `operations.py` and `render.py`.
-3. Tests: remove `test_governed_mutation_flow` (authority gating stays covered by
-   `test_authority_gate` and `test_client_cannot_self_elevate`); point the MCP help
-   assertion at a surviving apply-level entry. `DocsTests` keeps `mutation` in its
-   namespaces, so any leftover mention fails.
+1. New `core/snapshot.py` (target: under ~350 lines) owning the walk and the store:
+   - the walk moves over from `substrate.py` with its rules intact: vendor/generated
+     subtrees and `.tools/snapshot-ignore` folders recorded as folders only (with the
+     software-context rule for `vendor`/`build`/`dist`); PDFs, media and files of 1 MB
+     or more by size and mtime only; hash reuse when size and mtime match; access errors
+     recorded; T1's vanished-path and no-baseline fixes;
+   - the store: one table of snapshot entries (path, kind, size, mtime, hash,
+     folder-only flag) plus one row per snapshot (time, limitations); only the latest
+     snapshot is kept (decision 2: no per-file history).
+2. `changes` keeps its output and flags exactly (`M`/`A`/`D`/`?` lines, untracked footer,
+   `gitignore`, `limit`, `mark`); `mark=true` writes a new snapshot.
+3. Schema step 9 (additive): create the snapshot tables and copy the latest substrate
+   inventory into them, so an existing copy's `changes` baseline survives the upgrade.
+   Old tables are left in place for T4b.
+4. Delete `core/substrate.py`, `core/awareness.py`, their ops, and `render._awareness`;
+   drop `substrate`/`awareness` from the MCP `run` description and the docs.
+5. Tests: every existing change-tracking test passes unchanged in meaning; the provenance
+   and awareness tests go with their code; T1's regression tests target `snapshot`; a new
+   test upgrades a copy that has a baseline and sees `changes` report against it.
 
-**Explicit non-goals:** dropping the `mutation_*` tables and their migrations, and
-removing `awareness.py` (T4: schema squash; awareness still backs `changes mark=true`);
-output formatting (T5).
+**Explicit non-goals:** dropping old tables, squashing migrations, reclassifying pre-T2
+artifacts, removing JSON-text compatibility (T4b); output formatting (T5).
 
-**Affected ownership domains:** `core/mutation.py` (deleted), `core/operations.py`,
-`core/mcp.py`, `core/render.py`, `.framework/WORKFLOW.md`, `.tools/README.md`, tests.
+**Affected ownership domains:** `core/snapshot.py` (new), `core/substrate.py` and
+`core/awareness.py` (deleted), `core/storage.py` (step 9), `core/operations.py`,
+`core/render.py`, `core/mcp.py`, docs, tests, `.dev/bench.py` if needed.
 
 **Acceptance criteria:**
-- No `mutation` op, module or doc mention remains outside `core/storage.py` migrations
-  and `.dev/` (grep); `DocsTests` passes.
-- `help` lists no `mutation.*` op; the MCP `run` description no longer mentions it.
-- The full suite passes on 3.10 and 3.14.
-- `.tools` code shrinks by about the size of `mutation.py` (771 lines).
+- The change-tracking tests (baseline diff, untracked subtrees, same-size edit,
+  snapshot-ignore, gitignore flag, unchanged snapshots do not grow) and T1's regression
+  tests pass; no `substrate.*`/`awareness.*` op remains; `DocsTests` passes.
+- The upgrade test passes: an existing baseline survives step 9.
+- Same-session A/B `bench.py files=20000`: idle and 1%-edited `changes` and second
+  `mark` no slower than T3; state per file far below 2.5 KB.
+- The full suite passes on 3.10 and 3.14; this repository's own copy upgrades and
+  `changes` still reports against its last mark.
 
-**Verification requirements:** grep; suite on 3.10 and 3.14; `helpers help`.
+**Verification requirements:** suite on 3.10 and 3.14 (all five if storage changes touch
+sqlite behaviour); A/B bench; upgrade of this repository's own state (backed up first).
 
-**Known risks / unknowns:** an existing copy holding mutation records keeps them, unused,
-until T4's schema squash drops the tables; no data in this repository's copy depends on
-them (no mutation op appears in its receipts).
+**Known risks / unknowns:** the walk's classification rules are subtle (software-context
+folders, bulk folders, access errors); moving them verbatim, not rewriting them, is the
+mitigation, and the existing tests pin their behaviour.
 
 ## 8. Current Decision
 
-**Plan status:** ACTIVE; T2 parked, T3 declared
-**Implementation permission:** NO until the user approves T3.
+**Plan status:** ACTIVE; T3 parked, T4a declared
+**Implementation permission:** NO until the user approves T4a.
 
 ## 9. Parked tranches
+
+**T3 — PARKED 2026-09-28.**
+Outcome met: one write path. `core/mutation.py` and its six `mutation.*` ops are deleted;
+`edit`/`write` under `apply` authority are the only way the tools change project files.
+`WORKFLOW.md`'s approved-writes row now names the tranche approval and `edit`/`write`,
+and its `journal.link` row names what the code accepts (receipts, artifacts);
+`.tools/README.md`, the MCP `run` description and the op/render docstrings no longer
+mention mutation. `test_governed_mutation_flow` became `test_ops_are_gated_by_authority`
+(it kept the only op-level authority check); the MCP help test asserts no `mutation`
+entry. Evidence: grep finds `mutation` only in `core/storage.py` migrations (T4b),
+DESIGN-PRINCIPLES §3's general wording, and the tests' guards; `help` lists none; 48
+tests pass on 3.10 and 3.14; code 8,202 -> 7,415 lines. Limitation: the `mutation_*`
+tables remain in existing copies until T4b.
 
 **T2 — PARKED 2026-09-28.**
 Outcome met: read-only use no longer grows state. Receipt rows are kept forever; full

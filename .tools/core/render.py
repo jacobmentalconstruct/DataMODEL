@@ -63,7 +63,7 @@ def _awareness(revision: dict) -> str:
 
 
 def projection(operation: str, response: dict) -> str:
-    """Render a non-tool operation (status, receipts, journal, substrate, awareness, mutation)."""
+    """Render a non-tool operation (status, receipts, journal, substrate, awareness)."""
     if not isinstance(response, dict):
         return compact(response)
     if response.get("ok") is False:

@@ -185,16 +185,9 @@ class GovernanceTests(Target):
         self.assertNotIn("stdout", artifact["body"]["process"])  # not stored twice
         self.assertIn("result", artifact["body"]["envelope"])
 
-    def test_governed_mutation_flow(self) -> None:
-        self.out("run", "substrate.refresh")
-        self.out("run", "awareness.refresh")
-        preview = json.loads(self.out("run", "mutation.preview_write", "path=g.md", "content=gov", "--json"))
-        preview_id = preview["preview"]["preview_id"]
-        self.assertIn("authority_denied", self.fails(
-            "run", "mutation.approve", "preview_id=" + preview_id, "--authority", "observe"))
-        approval = json.loads(self.out("run", "mutation.approve", "preview_id=" + preview_id, "--json"))
-        self.out("run", "mutation.apply", "approval_id=" + approval["approval"]["approval_id"])
-        self.assertEqual((self.root / "g.md").read_text(), "gov")
+    def test_ops_are_gated_by_authority(self) -> None:
+        self.assertIn("authority_denied", self.fails("run", "journal.add", "title=x", "--authority", "observe"))
+        self.assertIn("journal:1", self.out("run", "journal.add", "title=x", "--authority", "sandbox"))
 
 
 class ChangesTests(Target):
@@ -588,7 +581,8 @@ class McpTests(Target):
         self.assertEqual(ping["result"], {})
         text = batch["result"]["content"][0]["text"]
         self.assertIn("## 1. ls", text)
-        self.assertIn("mutation.apply approval_id preview_id?  (needs apply)", text)
+        self.assertIn("journal.add title body? type? status?  (needs sandbox)", text)
+        self.assertNotIn("mutation", text)
         self.assertNotIn("structuredContent", batch["result"])
 
 

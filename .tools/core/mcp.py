@@ -23,7 +23,7 @@ HOT_TOOLS = ("changes", "outline", "ls", "grep", "read", "edit", "write")
 _RUN_DESCRIPTION = (
     "More tools: map (project card), deps (import graph), refs (defs/uses of a name), "
     "schema (data files), ollama (local models: run/sweep/chat/embed), hash; "
-    "plus receipts, journal, substrate, awareness, governed mutation. "
+    "plus receipts, journal, substrate, awareness. "
     'op="help" lists all; args.op names one for its contract. '
     "calls=[{op,args},...] runs several in one request."
 )
